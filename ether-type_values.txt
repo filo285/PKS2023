@@ -1,0 +1,17 @@
+512:XEROX PUP
+513:PUP Addr Trans
+2048:IPv4
+2049:X.75 Internet
+2053:X.25 Level 3
+2054:ARP
+32821:Reverse ARP
+32923:Appletalk
+33011:AppleTalk AARP
+33024:IEEE 802.1Q
+33079:Novell IPX 
+34525:IPv4
+34827:PPP
+34887:MPLS
+34888:MPLS with upstream-assigned label
+34915:PPPoE Discovery Stage
+34916:PPPoE Session Stage
