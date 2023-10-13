@@ -29,45 +29,61 @@ class ARP:
         self.complete = False
 
 
+class TFTP:
+    def __init__(self,ip1, ip2):
+        self.packet = []
+        self.ip = [ip1,ip2]
+        self.complete = False
+
+class ICMP:
+    def __init__(self, source_ip, destination_ip, idntf, sc):
+        self.packets = []
+        self.source_ip = source_ip
+        self.destination_ip = destination_ip
+        self.identifier = idntf
+        self.complete = False
+        self.sequence = sc
+
+
 def read_int(current_packet):
     return int.from_bytes(current_packet, "big")
 
 
-def create_file(output, file_name, ip_data, max_packets, f):
+def create_file(output_file, file_name, ip_data, max_packets, filt):
     file = {}
     file["name"] = "PKS2023/24"
     file["pcap_name"] = file_name
-    file["filter"] = f
-    file["packets"] = output
+    file["filter"] = filt
+    file["packets"] = output_file
     file["ipv4_senders"] = ip_data
     file["max_send_packets_by"] = max_packets
 
-    with open("data.yaml", "w") as f:
+    with open("data.yaml", "w") as file_output:
         yaml = YAML()
-        yaml.dump(file, f)
+        yaml.dump(file, file_output)
 
 
-def dst_mac(packet):
+def dst_mac(packet_local):
     mac_dst = ""
     for i in range(6):
-        mac_dst += (str(format(packet[i], '02x')))
+        mac_dst += (str(format(packet_local[i], '02x')))
         if i != 5:
             mac_dst += ":"
     return mac_dst
 
 
-def src_mac(packet):
+def src_mac(packet_local):
     mac_src = ""
     for i in range(6):
-        mac_src += str(format(packet[i + 6], '02x'))
+        mac_src += str(format(packet_local[i + 6], '02x'))
         if i != 5:
             mac_src += ":"
     return mac_src
 
 
-def src_ip(packet):
+def src_ip(packet_local):
     ip = ""
-    for byte in packet:
+    for byte in packet_local:
         ip = ip + str(byte)
         ip += '.'
     ip = ip[:-1]
@@ -80,59 +96,61 @@ def src_ip(packet):
     return ip
 
 
-def dst_ip(packet):
+def dst_ip(packet_local):
     ip = ""
-    for byte in packet:
+    for byte in packet_local:
         ip = ip + str(byte)
         ip += '.'
     ip = ip[:-1]
     return ip
 
 
-def IEEEdetector(lpacket, ldata):
-    if format(lpacket[15], '02x') == 'aa':
-        ldata.update(frame_type="IEEE 802.3 LLC & SNAP")
-        ldata.update(destination_mac=dst_mac(lpacket))
-        ldata.update(source_mac=src_mac(lpacket))
-        ProtocolID(lpacket, ldata)
-    elif format(lpacket[16], '02x') == '03':
-        ldata.update(frame_type="IEEE 802.3 LLC")
-        ldata.update(destination_mac=dst_mac(lpacket))
-        ldata.update(source_mac=src_mac(lpacket))
-        ProtocolID(lpacket, ldata)
+def IEEEdetector(packet_local, data_local):
+    if format(packet_local[15], '02x') == 'aa':
+        data_local.update(frame_type="IEEE 802.3 LLC & SNAP")
+        data_local.update(destination_mac=dst_mac(packet_local))
+        data_local.update(source_mac=src_mac(packet_local))
+        ProtocolID(packet_local, data_local)
+    elif format(packet_local[16], '02x') == '03':
+        data_local.update(frame_type="IEEE 802.3 LLC")
+        data_local.update(destination_mac=dst_mac(packet_local))
+        data_local.update(source_mac=src_mac(packet_local))
+        ProtocolID(packet_local, data_local)
     else:
-        ldata.update(frame_type="IEEE 802.3 RAW")
+        data_local.update(frame_type="IEEE 802.3 RAW")
 
 
-def ProtocolID(packet, ldata):
-    if packet[20:22] == b'\x20\x00':
-        ldata.update(pid='CDP')
-    elif packet[20:22] == b'\x20\x04':
-        ldata.update(pid='DTP')
-    elif packet[12:].__contains__(b'\xff\xff'):
-        ldata.update(sap='IPX')
-    elif packet[14:17] == b'\xaa\xaa\x03' and packet[17:19] == b'\x80\x9b':
-        ldata.update(pid='AppleTalk')
-    elif packet[14:16] == b'\xf0\xf0':
-        ldata.update(sap='NetBIOS')
+def ProtocolID(packet_local, data_local):
+    if packet_local[20:22] == b'\x20\x00':
+        data_local.update(pid='CDP')
+    elif packet_local[20:22] == b'\x20\x04':
+        data_local.update(pid='DTP')
+    elif packet_local[12:].__contains__(b'\xff\xff'):
+        data_local.update(sap='IPX')
+    elif packet_local[14:17] == b'\xaa\xaa\x03' and packet_local[17:19] == b'\x80\x9b':
+        data_local.update(pid='AppleTalk')
+    elif packet_local[14:16] == b'\xf0\xf0':
+        data_local.update(sap='NetBIOS')
     else:
-        ldata.update(sap='STP')
-        if packet[21:23] == b'\x01\x0b':
-            ldata.update(pid='PVST+')
+        data_local.update(sap='STP')
+        if packet_local[21:23] == b'\x01\x0b':
+            data_local.update(pid='PVST+')
 
 
-def app_protocol(packet, ldata):
-    s = read_int(packet[34:36])
-    d = read_int(packet[36:38])
-    ldata.update(app_protocol=[])
+def app_protocol(packet_local, data_local):
+    s = read_int(packet_local[34:36])
+    d = read_int(packet_local[36:38])
+    data_local.update(app_protocol=[])
     with open("ip_protocol_file.txt", "r") as fl:
-        line = fl.readline()
-        while line:
-            line = line.strip()
-            split_line = line.split(':')
-            if s == int(split_line[0]) or d == int(split_line[0]):
-                ldata['app_protocol'].append(split_line[1])
-            line = fl.readline()
+        line_local = fl.readline()
+        while line_local:
+            line_local = line_local.strip()
+            split_line_local = line_local.split(':')
+            if s == int(split_line_local[0]) or d == int(split_line_local[0]):
+                data_local['app_protocol'].append(split_line_local[1])
+            line_local = fl.readline()
+    if data_local['app_protocol'].__len__() ==  0:
+        del data_local['app_protocol']
 
 
 def ip_statistic():
@@ -165,10 +183,10 @@ def hex_dump(packet1):
 
 
 def completion_test():
-    for communication in tcp_communications:
+    for COMMUNICATION in tcp_communications:
         open_array = [False, False, False, False]
         close_array = [False, False, False, False]
-        for byte in communication.comm:
+        for byte in COMMUNICATION.comm:
             if open_array[0] == False and byte[47] == 2:
                 open_array[0] = True
             elif open_array[1] == False and open_array[2] == False and byte[47] == 18:
@@ -192,27 +210,51 @@ def completion_test():
                     close_array[2] = True
                     close_array[3] = True
         if False not in open_array and False not in close_array:
-            communication.complete = True
+            COMMUNICATION.complete = True
 
 
-def analyze(packet, frame_number):
+def tftp_completion_test():
+    for comm in tftp_communications:
+        length = 558
+        tmp = 1
+        for p in comm.packet:
+            if p['src_ip'] == comm.ip[1] and p['dst_ip'] == comm.ip[0]:
+                if p['len_frame_pcap'] < length:
+                    if comm.packet[tmp] == comm.packet[-1]:
+                        comm.complete = True
+            tmp += 1
+
+def icmp_completion_test():
+    for comm_local in icmp_communications:
+        arr = [False,False]
+        for packet_local in comm_local.packets:
+            if packet_local['type'] == 'request':
+                arr[0] = True
+            elif packet_local['type'] == 'reply':
+                arr[1] = True
+        if False not in arr:
+            comm_local.complete = True
+
+
+
+def analyze(packet_local, frame_number_local):
     data = {}
-    data.update(frame_number=frame_number)
+    data.update(frame_number=frame_number_local)
 
-    if len(packet) < 64:
+    if len(packet_local) < 64:
         data.update(len_frame_pcap=60)
         data.update(len_frame_medium=64)
     else:
-        data.update(len_frame_pcap=len(packet))
-        data.update(len_frame_medium=len(packet) + 4)
+        data.update(len_frame_pcap=len(packet_local))
+        data.update(len_frame_medium=len(packet_local) + 4)
 
-    ether_t = read_int(packet[12:14])
+    ether_t = read_int(packet_local[12:14])
     if ether_t >= 1500:
 
         data.update(frame_type="Ethernet II")
 
-        data.update(dst_mac=dst_mac(packet))
-        data.update(src_mac=src_mac(packet))
+        data.update(dst_mac=dst_mac(packet_local))
+        data.update(src_mac=src_mac(packet_local))
 
         with open("ether-type_values.txt", "r") as eth:
             eth_line = eth.readline()
@@ -222,39 +264,39 @@ def analyze(packet, frame_number):
                 if ether_t == int(split_eth_line[0]):
                     data.update(ether_type=split_eth_line[1])
                     if split_eth_line[1] == 'ARP':
-                        data.update(src_ip=src_ip(packet[28:32]))
-                        data.update(dst_ip=dst_ip(packet[38:42]))
+                        data.update(src_ip=src_ip(packet_local[28:32]))
+                        data.update(dst_ip=dst_ip(packet_local[38:42]))
                     else:
-                        data.update(src_ip=src_ip(packet[26:30]))
-                        data.update(dst_ip=dst_ip(packet[30:34]))
+                        data.update(src_ip=src_ip(packet_local[26:30]))
+                        data.update(dst_ip=dst_ip(packet_local[30:34]))
                     if split_eth_line[1] == "IPv4":
                         with open("ipv4_protocol.txt", "r") as ipv4_file:
                             ipv4_line = ipv4_file.readline()
-                            ihl = packet[14] & 0x0F
-                            ihl = ihl * 4
-                            protocol_nmb = packet[ihl + 3]
+                            IHL = packet_local[14] & 0x0F
+                            IHL = IHL * 4
+                            protocol_nmb = packet_local[IHL + 3]
                             while ipv4_line:
                                 ipv4_line = ipv4_line.strip()
                                 split_ipv4_line = ipv4_line.split(':')
                                 if protocol_nmb == int(split_ipv4_line[0]):
                                     data.update(protocol=split_ipv4_line[1])
                                     if protocol_nmb == 6 or protocol_nmb == 17:
-                                        data.update(src_port=read_int(packet[34:36]))
-                                        data.update(dst_port=read_int(packet[36:38]))
-                                        app_protocol(packet, data)
+                                        data.update(src_port=read_int(packet_local[34:36]))
+                                        data.update(dst_port=read_int(packet_local[36:38]))
+                                        app_protocol(packet_local, data)
                                         break
                                     break
                                 ipv4_line = ipv4_file.readline()
                     break
                 eth_line = eth.readline()
 
-        hex_dmp = hex_dump(packet)
+        hex_dmp = hex_dump(packet_local)
         hex_dump1 = LiteralScalarString(hex_dmp)
         data.update(hexa_frame=hex_dump1)
 
     elif ether_t < 1500:
-        IEEEdetector(packet, data)
-        hex_dmp = hex_dump(packet)
+        IEEEdetector(packet_local, data)
+        hex_dmp = hex_dump(packet_local)
         hex_dump1 = LiteralScalarString(hex_dmp)
         data.update(hexa_frame=hex_dump1)
 
@@ -269,13 +311,13 @@ data = {}
 ipv4_output = []
 max_packets_sent = []
 args_parser = argparse.ArgumentParser()
-args_parser.add_argument('-p', '--protocol', default="ARP")
+args_parser.add_argument('-p', '--protocol', default="ICMP")
 
 protocols = []
 
 args = args_parser.parse_args()
 
-pcap_name = "eth-4.pcap"
+pcap_name = "trace-6.pcap"
 pcap_file = rdpcap(pcap_name)
 
 pcap_file_in_bytes = []
@@ -302,13 +344,12 @@ analyzed_packets = []
 for packet in pcap_file_in_bytes:
     analyzed_packets.append(analyze(packet, frame_number))
     frame_number += 1
-tcp_communications = []
-arp_communication = []
+
+
 prev_packet = None
 
 if args.protocol == "ARP":
-
-    full_communications = []
+    arp_communication = []
     incomplete_communication_request = [{'incomplete_communication': 'request'}]
     incomplete_communication_reply = [{'incomplete_communication': 'reply'}]
     for packet in analyzed_packets:
@@ -355,6 +396,7 @@ if args.protocol == "ARP":
     create_file(output, pcap_name, ipv4_output, max_packets_sent, args.protocol)
 
 elif args.protocol in supported_protocols:
+    tcp_communications = []
     pindex = supported_protocols.index(args.protocol)
     protocol_number = int(supported_protocols_nmb[pindex])
     frame_number = 0
@@ -397,6 +439,106 @@ elif args.protocol in supported_protocols:
     ip_statistic()
     create_file(output, pcap_name, ipv4_output, max_packets_sent, args.protocol)
 
+elif args.protocol == "TFTP":
+    tftp_communications = []
+    frame_number = 0
+
+    for packet in analyzed_packets:
+        frame_number += 1
+        if read_int(pcap_file_in_bytes[frame_number - 1][12:14]) == 2048:
+            ihl = pcap_file_in_bytes[frame_number - 1][14] & 0x0F
+            ihl = ihl * 4
+            protocol_nmb = pcap_file_in_bytes[frame_number - 1][ihl + 3]
+            if protocol_nmb == 17:
+                if packet["dst_port"] == 69:
+                    in_array = 0
+                    for comm in tftp_communications:
+                        if packet['dst_ip'] in comm.ip and packet['src_ip'] in comm.ip:
+                            in_array = 1
+                    if in_array == 0:
+                        tftp_communications.append(TFTP(packet['src_ip'],packet['dst_ip']))
+                        tftp_communications[-1].packet.append(packet)
+                else:
+                    for acomm in tftp_communications:
+                        if packet['src_ip'] in acomm.ip and packet['dst_ip'] in acomm.ip:
+                            acomm.packet.append(packet)
+    tftp_completion_test()
+    output = []
+    cmn = 1
+    for communication in tftp_communications:
+        if communication.complete:
+            data = {'communication number': cmn}
+            output.append(data)
+            output.append(communication.packet)
+            cmn += 1
+    ip_statistic()
+    create_file(output, pcap_name, ipv4_output, max_packets_sent, args.protocol)
+elif args.protocol == "ICMP":
+    icmp_communications = []
+    frame_number = 0
+
+    for packet in analyzed_packets:
+        if read_int(pcap_file_in_bytes[frame_number - 1][12:14]) == 2048:
+            ihl = pcap_file_in_bytes[frame_number - 1][14] & 0x0F
+            ihl = ihl * 4
+            protocol_nmb = pcap_file_in_bytes[frame_number][ihl + 3]
+            if packet['protocol'] == "ICMP":
+                if pcap_file_in_bytes[frame_number][34] == 8:
+                    in_array = 0
+                    for acomm in icmp_communications:
+                        if packet['dst_ip'] == acomm.destination_ip and packet['src_ip'] == acomm.source_ip and read_int(pcap_file_in_bytes[frame_number][38:40]) == acomm.identifier:
+                            packet.update(type='request')
+                            acomm.packets.append(packet)
+                            in_array = 1
+                    if in_array == 0:
+
+                        icmp_communications.append(ICMP(packet['src_ip'], packet['dst_ip'], read_int(pcap_file_in_bytes[frame_number][38:40]),read_int(pcap_file_in_bytes[frame_number][40:42])))
+                        packet.update(type='request')
+                        icmp_communications[-1].packets.append(packet)
+                elif pcap_file_in_bytes[frame_number][34] == 0:
+                    in_array = 0
+                    for comm in icmp_communications:
+
+                        if packet['src_ip'] == comm.destination_ip and packet['dst_ip'] == comm.source_ip and read_int(pcap_file_in_bytes[frame_number][38:40]) == comm.identifier:
+                            packet.update(type='reply')
+                            comm.packets.append(packet)
+                            in_array = 1
+                    if in_array == 0:
+                        icmp_communications.append(ICMP(packet['src_ip'], packet['dst_ip'], read_int(pcap_file_in_bytes[frame_number][38:40]),read_int(pcap_file_in_bytes[frame_number][40:42])))
+                elif pcap_file_in_bytes[frame_number][34] == 11:
+                    in_array = 0
+                    for comm in icmp_communications:
+                        if packet['src_ip'] == comm.destination_ip and packet['dst_ip'] == comm.source_ip and read_int(pcap_file_in_bytes[frame_number][38:40]) == comm.identifier:
+                            packet.update(type='time exceeded')
+                            comm.packets.append(packet)
+                            in_array = 1
+                    if in_array == 0:
+                        icmp_communications.append(ICMP(packet['src_ip'], packet['dst_ip'], read_int(pcap_file_in_bytes[frame_number][38:40]), read_int(pcap_file_in_bytes[frame_number][40:42])))
+                        packet.update(type='time exceeded')
+                        icmp_communications[-1].packets.append(packet)
+        frame_number += 1
+
+
+
+
+
+    icmp_completion_test()
+    output = []
+    incomplete_communication = [{'incomplete_communication': 1}]
+    cmn = 1
+    for communication in icmp_communications:
+        if communication.complete:
+            data = {'communication number': cmn, 'identifier': communication.identifier, 'sequence': communication.sequence}
+            output.append(data)
+            output.append(communication.packets)
+            cmn += 1
+        else:
+            incomplete_communication.append(communication.packets)
+    ip_statistic()
+    output += incomplete_communication
+    create_file(output, pcap_name, ipv4_output, max_packets_sent, args.protocol)
+
+
 
 else:
     output = []
@@ -404,4 +546,4 @@ else:
         data = {}
         frame_number += 1
         output.append(analyze(packet, frame_number))
-    create_file(output, pcap_name, ipv4_output, max_packets_sent)
+    create_file(output, pcap_name, ipv4_output, max_packets_sent, args.protocol)
