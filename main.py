@@ -30,20 +30,29 @@ class ARP:
 
 
 class TFTP:
-    def __init__(self,ip1, ip2):
+    def __init__(self, ip1, ip2):
         self.packet = []
-        self.ip = [ip1,ip2]
+        self.ip = [ip1, ip2]
         self.complete = False
 
+
 class ICMP:
-    def __init__(self, source_ip, destination_ip, idntf, sc):
+    def __init__(self, source_ip, destination_ip, idntf):
         self.packets = []
         self.source_ip = source_ip
         self.destination_ip = destination_ip
         self.identifier = idntf
         self.complete = False
-        self.sequence = sc
 
+
+class Fragmented_ICMP:
+    def __init__(self, source_ip, destination_ip, identification):
+        self.packets = []
+        self.source_ip = source_ip
+        self.destination_ip = destination_ip
+        self.identification = identification
+        self.complete = False
+        self.identifier = 0
 
 def read_int(current_packet):
     return int.from_bytes(current_packet, "big")
@@ -149,7 +158,7 @@ def app_protocol(packet_local, data_local):
             if s == int(split_line_local[0]) or d == int(split_line_local[0]):
                 data_local['app_protocol'].append(split_line_local[1])
             line_local = fl.readline()
-    if data_local['app_protocol'].__len__() ==  0:
+    if data_local['app_protocol'].__len__() == 0:
         del data_local['app_protocol']
 
 
@@ -202,7 +211,8 @@ def completion_test():
                 elif close_array[0] == True and close_array[1] == True and close_array[2] == False and (
                         byte[47] == 25 or byte[47] == 17):
                     close_array[2] = True
-                elif close_array[0] == True and close_array[1] == True and close_array[2] == True and close_array[3] == False and byte[47] == 16:
+                elif close_array[0] == True and close_array[1] == True and close_array[2] == True and close_array[
+                    3] == False and byte[47] == 16:
                     close_array[3] = True
                 elif True not in close_array and (byte[47] == 20 or byte[47] == 4):
                     close_array[0] = True
@@ -224,9 +234,10 @@ def tftp_completion_test():
                         comm.complete = True
             tmp += 1
 
+
 def icmp_completion_test():
     for comm_local in icmp_communications:
-        arr = [False,False]
+        arr = [False, False]
         for packet_local in comm_local.packets:
             if packet_local['type'] == 'request':
                 arr[0] = True
@@ -234,7 +245,6 @@ def icmp_completion_test():
                 arr[1] = True
         if False not in arr:
             comm_local.complete = True
-
 
 
 def analyze(packet_local, frame_number_local):
@@ -317,7 +327,7 @@ protocols = []
 
 args = args_parser.parse_args()
 
-pcap_name = "trace-6.pcap"
+pcap_name = "trace-26.pcap"
 pcap_file = rdpcap(pcap_name)
 
 pcap_file_in_bytes = []
@@ -345,7 +355,6 @@ for packet in pcap_file_in_bytes:
     analyzed_packets.append(analyze(packet, frame_number))
     frame_number += 1
 
-
 prev_packet = None
 
 if args.protocol == "ARP":
@@ -354,7 +363,7 @@ if args.protocol == "ARP":
     incomplete_communication_reply = [{'incomplete_communication': 'reply'}]
     for packet in analyzed_packets:
         if packet.__contains__('ether_type') and packet['ether_type'] == "ARP":
-            if read_int(pcap_file_in_bytes[packet['frame_number']-1][20:22]) == 1:
+            if read_int(pcap_file_in_bytes[packet['frame_number'] - 1][20:22]) == 1:
                 in_array = 0
                 for arp in arp_communication:
                     if arp.ip == packet['dst_ip']:
@@ -363,11 +372,11 @@ if args.protocol == "ARP":
                 if in_array == 0:
                     arp_communication.append(ARP(packet['dst_ip']))
                     arp_communication[-1].packets.append(packet)
-            elif read_int(pcap_file_in_bytes[packet['frame_number']-1][20:22]) == 2:
+            elif read_int(pcap_file_in_bytes[packet['frame_number'] - 1][20:22]) == 2:
                 in_array = 0
                 for arp in arp_communication:
                     if arp.ip == packet['src_ip']:
-                        packet.update(ip_to_mac=(packet['src_ip'],packet['src_mac']))
+                        packet.update(ip_to_mac=(packet['src_ip'], packet['src_mac']))
                         arp.packets.append(packet)
                         arp.complete = True
                         in_array = 1
@@ -384,13 +393,13 @@ if args.protocol == "ARP":
             cmn += 1
         else:
             incomplete_communication_request.append(communication.packets)
-    if incomplete_communication_request.__len__()== 1 and incomplete_communication_reply.__len__()==1:
+    if incomplete_communication_request.__len__() == 1 and incomplete_communication_reply.__len__() == 1:
         create_file(output, pcap_name, ipv4_output, max_packets_sent, args.protocol)
-    elif incomplete_communication_reply.__len__()==1:
-        output+=incomplete_communication_request
+    elif incomplete_communication_reply.__len__() == 1:
+        output += incomplete_communication_request
         create_file(output, pcap_name, ipv4_output, max_packets_sent, args.protocol)
-    elif incomplete_communication_request.__len__()==1:
-        output+=incomplete_communication_reply
+    elif incomplete_communication_request.__len__() == 1:
+        output += incomplete_communication_reply
         create_file(output, pcap_name, ipv4_output, max_packets_sent, args.protocol)
     ip_statistic()
     create_file(output, pcap_name, ipv4_output, max_packets_sent, args.protocol)
@@ -411,7 +420,8 @@ elif args.protocol in supported_protocols:
                 if packet["src_port"] == protocol_number or packet["dst_port"] == protocol_number:
                     in_array = 0
                     for acomm in tcp_communications:
-                        if packet["src_port"] in acomm.port and packet["dst_port"] in acomm.port and packet["src_ip"] in acomm.ip and packet["dst_ip"] in acomm.ip:
+                        if packet["src_port"] in acomm.port and packet["dst_port"] in acomm.port and packet[
+                            "src_ip"] in acomm.ip and packet["dst_ip"] in acomm.ip:
                             acomm.comm.append(pcap_file_in_bytes[frame_number - 1])
                             acomm.packets.append(packet)
                             in_array = 1
@@ -456,7 +466,7 @@ elif args.protocol == "TFTP":
                         if packet['dst_ip'] in comm.ip and packet['src_ip'] in comm.ip:
                             in_array = 1
                     if in_array == 0:
-                        tftp_communications.append(TFTP(packet['src_ip'],packet['dst_ip']))
+                        tftp_communications.append(TFTP(packet['src_ip'], packet['dst_ip']))
                         tftp_communications[-1].packet.append(packet)
                 else:
                     for acomm in tftp_communications:
@@ -476,51 +486,107 @@ elif args.protocol == "TFTP":
 elif args.protocol == "ICMP":
     icmp_communications = []
     frame_number = 0
-
+    prev_fragmented = 0
     for packet in analyzed_packets:
-        if read_int(pcap_file_in_bytes[frame_number - 1][12:14]) == 2048:
-            ihl = pcap_file_in_bytes[frame_number - 1][14] & 0x0F
+        if read_int(pcap_file_in_bytes[frame_number][12:14]) == 2048:
+            ihl = pcap_file_in_bytes[frame_number][14] & 0x0F
             ihl = ihl * 4
             protocol_nmb = pcap_file_in_bytes[frame_number][ihl + 3]
-            if packet['protocol'] == "ICMP":
-                if pcap_file_in_bytes[frame_number][34] == 8:
-                    in_array = 0
-                    for acomm in icmp_communications:
-                        if packet['dst_ip'] == acomm.destination_ip and packet['src_ip'] == acomm.source_ip and read_int(pcap_file_in_bytes[frame_number][38:40]) == acomm.identifier:
+            if packet.__contains__('protocol') and packet['protocol'] == "ICMP":
+                if pcap_file_in_bytes[frame_number][20] == 32 or prev_fragmented == 1:
+                    if prev_fragmented == 0 or pcap_file_in_bytes[frame_number][20] == 32:
+                        packet.update(flags_mf=str(pcap_file_in_bytes[frame_number][20])+'-More fragments')
+                        if pcap_file_in_bytes[frame_number][34] == 8:
                             packet.update(type='request')
-                            acomm.packets.append(packet)
-                            in_array = 1
-                    if in_array == 0:
-
-                        icmp_communications.append(ICMP(packet['src_ip'], packet['dst_ip'], read_int(pcap_file_in_bytes[frame_number][38:40]),read_int(pcap_file_in_bytes[frame_number][40:42])))
-                        packet.update(type='request')
-                        icmp_communications[-1].packets.append(packet)
-                elif pcap_file_in_bytes[frame_number][34] == 0:
-                    in_array = 0
-                    for comm in icmp_communications:
-
-                        if packet['src_ip'] == comm.destination_ip and packet['dst_ip'] == comm.source_ip and read_int(pcap_file_in_bytes[frame_number][38:40]) == comm.identifier:
+                            icmp_communications.append(
+                                Fragmented_ICMP(packet['src_ip'], packet['dst_ip'],
+                                                read_int(pcap_file_in_bytes[frame_number][18:20])))
+                            icmp_communications[-1].packets.append(packet)
+                            icmp_communications[-1].identifier = read_int(pcap_file_in_bytes[frame_number][38:40])
+                            prev_fragmented = 1
+                        elif pcap_file_in_bytes[frame_number][34] == 0:
                             packet.update(type='reply')
-                            comm.packets.append(packet)
-                            in_array = 1
-                    if in_array == 0:
-                        icmp_communications.append(ICMP(packet['src_ip'], packet['dst_ip'], read_int(pcap_file_in_bytes[frame_number][38:40]),read_int(pcap_file_in_bytes[frame_number][40:42])))
-                elif pcap_file_in_bytes[frame_number][34] == 11:
-                    in_array = 0
-                    for comm in icmp_communications:
-                        if packet['src_ip'] == comm.destination_ip and packet['dst_ip'] == comm.source_ip and read_int(pcap_file_in_bytes[frame_number][38:40]) == comm.identifier:
+                            for comm in icmp_communications:
+                                if packet['src_ip'] == comm.destination_ip and packet['dst_ip'] == comm.source_ip and read_int(pcap_file_in_bytes[frame_number][18:20]) == comm.identification:
+                                    icmp_communications[-1].packets.append(packet)
+                                    prev_fragmented = 1
+                    else:
+                        for comm in icmp_communications:
+                            if packet['src_ip'] == comm.source_ip and packet['dst_ip'] == comm.destination_ip and read_int(pcap_file_in_bytes[frame_number][18:20]) == comm.identification:
+                                packet.update(type=comm.packets[-1]['type'])
+                                packet.update(flags_mf=pcap_file_in_bytes[frame_number][20])
+                                packet.update(frag_offset=read_int(pcap_file_in_bytes[frame_number][20:22])*8)
+                                comm.packets.append(packet)
+
+                                prev_fragmented = 0
+                            elif packet['src_ip'] == comm.destination_ip and packet['dst_ip'] == comm.source_ip and read_int(pcap_file_in_bytes[frame_number][18:20]) == comm.identification:
+                                packet.update(type=comm.packets[-1]['type'])
+                                packet.update(flags_mf=pcap_file_in_bytes[frame_number][20])
+                                packet.update(frag_offset=read_int(pcap_file_in_bytes[frame_number][20:22])*8)
+                                packet.update(sequence=read_int(pcap_file_in_bytes[frame_number][40:42]))
+                                comm.packets.append(packet)
+
+                                prev_fragmented = 0
+                else:
+                    if pcap_file_in_bytes[frame_number][34] == 8:
+                        in_array = 0
+                        for acomm in icmp_communications:
+                            if packet['dst_ip'] == acomm.destination_ip and packet[
+                                'src_ip'] == acomm.source_ip and read_int(
+                                pcap_file_in_bytes[frame_number][38:40]) == acomm.identifier:
+                                packet.update(type='request')
+                                acomm.packets.append(packet)
+                                in_array = 1
+                        if in_array == 0:
+                            icmp_communications.append(
+                                ICMP(packet['src_ip'], packet['dst_ip'], read_int(pcap_file_in_bytes[frame_number][38:40])))
+                            packet.update(type='request')
+                            packet.update(sequence=read_int(pcap_file_in_bytes[frame_number][40:42]))
+                            icmp_communications[-1].packets.append(packet)
+                    elif pcap_file_in_bytes[frame_number][34] == 0:
+                        in_array = 0
+                        for comm in icmp_communications:
+
+                            if packet['src_ip'] == comm.destination_ip and packet['dst_ip'] == comm.source_ip and read_int(
+                                    pcap_file_in_bytes[frame_number][38:40]) == comm.identifier:
+                                packet.update(type='reply')
+                                comm.packets.append(packet)
+                                in_array = 1
+                        if in_array == 0:
+                            icmp_communications.append(
+                                ICMP(packet['src_ip'], packet['dst_ip'], read_int(pcap_file_in_bytes[frame_number][38:40])))
+                            packet.update(sequence=read_int(pcap_file_in_bytes[frame_number][40:42]))
+                            icmp_communications[-1].packets.append(packet)
+                    elif pcap_file_in_bytes[frame_number][34] == 11:
+                        in_array = 0
+                        for comm in icmp_communications:
+                            if packet['src_ip'] == comm.destination_ip and packet['dst_ip'] == comm.source_ip and read_int(
+                                    pcap_file_in_bytes[frame_number][38:40]) == comm.identifier:
+                                packet.update(type='time exceeded')
+                                packet.update(sequence=read_int(pcap_file_in_bytes[frame_number][40:42]))
+                                comm.packets.append(packet)
+                                in_array = 1
+                        if in_array == 0:
+                            icmp_communications.append(
+                                ICMP(packet['src_ip'], packet['dst_ip'], read_int(pcap_file_in_bytes[frame_number][38:40])))
                             packet.update(type='time exceeded')
-                            comm.packets.append(packet)
-                            in_array = 1
-                    if in_array == 0:
-                        icmp_communications.append(ICMP(packet['src_ip'], packet['dst_ip'], read_int(pcap_file_in_bytes[frame_number][38:40]), read_int(pcap_file_in_bytes[frame_number][40:42])))
-                        packet.update(type='time exceeded')
-                        icmp_communications[-1].packets.append(packet)
+                            packet.update(sequence=read_int(pcap_file_in_bytes[frame_number][40:42]))
+                            icmp_communications[-1].packets.append(packet)
+                    elif pcap_file_in_bytes[frame_number][34] == 3:
+                        in_array = 0
+                        for comm in icmp_communications:
+                            if packet['src_ip'] == comm.destination_ip and packet['dst_ip'] == comm.source_ip and read_int(
+                                    pcap_file_in_bytes[frame_number][38:40]) == comm.identifier:
+                                packet.update(type='port unreachable')
+                                comm.packets.append(packet)
+                                in_array = 1
+                        if in_array == 0:
+                            icmp_communications.append(
+                                ICMP(packet['src_ip'], packet['dst_ip'], read_int(pcap_file_in_bytes[frame_number][38:40])))
+                            packet.update(type='port unreachable')
+                            packet.update(sequence=read_int(pcap_file_in_bytes[frame_number][40:42]))
+                            icmp_communications[-1].packets.append(packet)
         frame_number += 1
-
-
-
-
 
     icmp_completion_test()
     output = []
@@ -528,7 +594,7 @@ elif args.protocol == "ICMP":
     cmn = 1
     for communication in icmp_communications:
         if communication.complete:
-            data = {'communication number': cmn, 'identifier': communication.identifier, 'sequence': communication.sequence}
+            data = {'communication number': cmn, 'identifier': communication.identifier}
             output.append(data)
             output.append(communication.packets)
             cmn += 1
@@ -542,8 +608,6 @@ elif args.protocol == "ICMP":
 
 else:
     output = []
-    for packet in pcap_file_in_bytes:
-        data = {}
-        frame_number += 1
-        output.append(analyze(packet, frame_number))
+    for packet in analyzed_packets:
+        output.append(packet)
     create_file(output, pcap_name, ipv4_output, max_packets_sent, args.protocol)
